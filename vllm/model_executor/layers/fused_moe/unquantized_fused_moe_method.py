@@ -4,7 +4,7 @@
 from vllm.model_executor.layers.fused_moe.expert_tracking import (
     init_tracker,
     record_expert_selection,
-    EXPERT_TRACKING_ENABLED,
+    _tracking_enabled,
 )
 
 from collections.abc import Callable
@@ -359,7 +359,7 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
         logical_replica_count: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
 
-        if EXPERT_TRACKING_ENABLED:
+        if _tracking_enabled():
             init_tracker()
 
         topk_weights, topk_ids, zero_expert_result = layer.select_experts(
@@ -367,7 +367,7 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
             router_logits=router_logits,
         )
 
-        if EXPERT_TRACKING_ENABLED:
+        if _tracking_enabled():
             layer_prefix = getattr(layer, "layer_name", "")
             try:
                 record_expert_selection(

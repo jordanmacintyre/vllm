@@ -4,11 +4,11 @@ import os, json, time, random
 # Set random seed to match assignment overview
 random.seed(1234)
 
-MOE_LOG_ENABLED = False
+MOE_LOG_ENABLED = True
 
 # Set environment variables
 os.environ["VLLM_LOG_MOE_LAYER"] = "0"
-os.environ["VLLM_LOG_MOE"] = "log.jsonl" if MOE_LOG_ENABLED else ""
+os.environ["VLLM_LOG_MOE"] = "moe_routes.jsonl" if MOE_LOG_ENABLED else ""
 
 
 if __name__ == "__main__":

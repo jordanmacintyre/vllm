@@ -1,6 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+from vllm.model_executor.layers.fused_moe.expert_tracking import (
+    set_model_id, 
+    _tracking_enabled,
+)
+
 import time
 from collections.abc import Callable, Mapping
 from copy import copy
@@ -161,7 +166,11 @@ class LLMEngine:
         enable_multiprocessing: bool = False,
     ) -> "LLMEngine":
         """Creates an LLM engine from the engine arguments."""
-
+        
+        if _tracking_enabled():
+            # Export model_id for expert tracking
+            set_model_id(engine_args.model)
+        
         # Create the engine configs.
         vllm_config = engine_args.create_engine_config(usage_context)
         executor_class = Executor.get_class(vllm_config)

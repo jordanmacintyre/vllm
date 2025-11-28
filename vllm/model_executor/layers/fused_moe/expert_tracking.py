@@ -5,7 +5,7 @@ Tracks which experts are selected for each token during inference.
 Outputs per-token expert selections to a JSONL file.
 
 Environment Variables:
-    VLLM_LOG_MOE: Set to an output file path to enable tracking 
+    VLLM_LOG_MOE: Set to an output file path to enable tracking
     (e.g., "expert_log.jsonl") If not set, tracking is disabled.
     VLLM_EXPERT_TRACKING_LAYER: Layer index to track (0-indexed, default: 0)
 
@@ -26,10 +26,6 @@ import torch
 # Configuration
 # ============================================================================
 
-# Check if user wants to log expert usage
-_OUTPUT_FILE = os.environ.get("VLLM_LOG_MOE")
-EXPERT_TRACKING_ENABLED = _OUTPUT_FILE is not None and _OUTPUT_FILE != ""
-
 # Which layer to track (default: layer 0)
 _TARGET_LAYER_STR = os.environ.get("VLLM_LOG_MOE_LAYER", "0")
 
@@ -39,10 +35,8 @@ _tracker: Optional["ExpertUsageTracker"] = None
 # Flag to suppress tracking during warmup/profiling
 _SUPPRESS_TRACKING: bool = False
 
-print(
-    f"[ExpertTracker] module import: enabled={EXPERT_TRACKING_ENABLED} "
-    f"layer={_TARGET_LAYER_STR} file={_OUTPUT_FILE}"
-)
+# Set model_id during vLLM initialization
+_MODEL_ID: str = ""
 
 # ==============================================================================
 # Control Functions
@@ -61,6 +55,31 @@ def resume_tracking() -> None:
     _SUPPRESS_TRACKING = False
 
 
+def _get_output_file() -> Optional[str]:
+    """Check environment variable responsible for enabling MoE logging."""
+    path = os.environ.get("VLLM_LOG_MOE")
+    return path if path else None
+
+
+def _tracking_enabled() -> bool:
+    """Verify if MoE logging is enabled."""
+    return _get_output_file() is not None
+
+
+def set_model_id(model_id: str) -> None:
+    """Set the model_id based on the provided model_name to LLM()."""
+    global _MODEL_ID
+    _MODEL_ID = model_id
+
+    # If the tracker already exists, update its model_id as well
+    if _tracker is not None and hasattr(_tracker, "model_id"):
+        _tracker.model_id = model_id
+
+
+print(
+    f"[ExpertTracker] module import: enabled={_tracking_enabled()} "
+    f"layer={_TARGET_LAYER_STR} file={_get_output_file()}"
+)
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -113,7 +132,7 @@ class ExpertUsageTracker:
     """
     Logs expert selections to a JSONL file.
 
-    Output format (one JSON per line):
+    Output format (one JSON per line) example:
         Line 1: {"type": "meta", "model_id": "...", "top_k": 2, ...}
         Line 2+: {"type": "route", "token_idx": 0, "topk_ids": [3, 7], ...}
     """
@@ -136,7 +155,7 @@ class ExpertUsageTracker:
         self._top_k: Optional[int] = None  # Inferred from first batch
 
         # System info for metadata
-        self.model_id: str = "unknown"
+        self.model_id: str = _MODEL_ID
         self.vllm_version: str = _get_vllm_version()
         self.torch_version: str = torch.__version__
         self.device: str = _get_device_info()
@@ -248,28 +267,24 @@ class ExpertUsageTracker:
 
 
 def init_tracker() -> None:
-    """Initialize the global tracker instance."""
     global _tracker
 
-    # Already initialized
     if _tracker is not None:
         return
-
-    # Tracking disabled
-    if not EXPERT_TRACKING_ENABLED:
+    if not _tracking_enabled():
         return
 
-    # Parse target layer
     try:
         target_layer = int(_TARGET_LAYER_STR)
     except ValueError:
-        print(
-            f"[ExpertTracker] Invalid VLLM_EXPERT_TRACKING_LAYER: {_TARGET_LAYER_STR}"
-        )
+        print(f"[ExpertTracker] Invalid VLLM_LOG_MOE_LAYER: {_TARGET_LAYER_STR}")
         return
 
-    # Create tracker and register cleanup
-    _tracker = ExpertUsageTracker(target_layer, _OUTPUT_FILE)
+    output_file = _get_output_file()
+    if output_file is None:
+        return
+
+    _tracker = ExpertUsageTracker(target_layer, output_file)
     atexit.register(_tracker.close)
     print(f"[ExpertTracker] Initialized for layer {_tracker.target_layer}")
 
@@ -297,19 +312,14 @@ def record_expert_selection(
     """
     global _tracker
 
-    # Tracking disabled
-    if not EXPERT_TRACKING_ENABLED:
+    if not _tracking_enabled():
         return
-
-    # Suppressed (warmup/profiling)
     if _SUPPRESS_TRACKING:
         return
 
-    # Lazy initialization
     if _tracker is None:
         init_tracker()
         if _tracker is None:
             return
-        
-    # Record data
+
     _tracker.record(topk_ids, topk_weights, layer_prefix)
