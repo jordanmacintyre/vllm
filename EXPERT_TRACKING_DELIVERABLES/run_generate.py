@@ -7,16 +7,19 @@ SEED = 1234
 # Set environment variables
 os.environ["VLLM_LOG_MOE_SEED"] = f"{SEED}"
 os.environ["VLLM_LOG_MOE_LAYER"] = "0"
-os.environ["VLLM_LOG_MOE"] = "moe_routes.jsonl" if MOE_LOG_ENABLED else ""
-
+os.environ["VLLM_LOG_MOE"] = (
+    "EXPERT_TRACKING_DELIVERABLES/moe_routes.jsonl" if MOE_LOG_ENABLED else ""
+)
 
 
 if __name__ == "__main__":
     # Read GSM8K prompts (25 total)
-    prompts = open("prompts.txt").read().split("\n\n---\n\n")
+    prompts = (
+        open("EXPERT_TRACKING_DELIVERABLES/prompts.txt").read().split("\n\n---\n\n")
+    )
 
     # Initiate sampling params
-    sp = SamplingParams(temperature=0.0, max_tokens=4)
+    sp = SamplingParams(temperature=0.0, max_tokens=128)
 
     # Load model from checkpoint
     llm = LLM(
@@ -46,5 +49,5 @@ if __name__ == "__main__":
     }
 
     # Append JSON record on a new line (JSON format)
-    with open("timing.jsonl", "a", encoding="utf-8") as f:
+    with open("EXPERT_TRACKING_DELIVERABLES/timing_test.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
