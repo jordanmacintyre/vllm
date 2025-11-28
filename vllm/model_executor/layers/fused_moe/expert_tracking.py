@@ -19,15 +19,20 @@ import re
 import json
 import atexit
 from typing import Optional, List
-
+from vllm.logger import init_logger
 import torch
 
+# Initialize logger
+logger = init_logger(__name__)
 # ============================================================================
 # Configuration
 # ============================================================================
 
 # Which layer to track (default: layer 0)
 _TARGET_LAYER_STR = os.environ.get("VLLM_LOG_MOE_LAYER", "0")
+
+# Random seed (default: 1234)
+_SEED_VALUE = os.environ.get("VLLM_LOG_MOE_SEED", "1234")
 
 # Global tracker instance + suppression flag
 _tracker: Optional["ExpertUsageTracker"] = None
@@ -43,13 +48,13 @@ _MODEL_ID: str = ""
 # ==============================================================================
 
 
-def suppress_tracking() -> None:
+def suppress_expert_tracking() -> None:
     """Disable logging during dummy/profile/CUDA-graph runs."""
     global _SUPPRESS_TRACKING
     _SUPPRESS_TRACKING = True
 
 
-def resume_tracking() -> None:
+def resume_expert_tracking() -> None:
     """Re-enable logging after dummy/profile/CUDA-graph runs."""
     global _SUPPRESS_TRACKING
     _SUPPRESS_TRACKING = False
@@ -61,7 +66,7 @@ def _get_output_file() -> Optional[str]:
     return path if path else None
 
 
-def _tracking_enabled() -> bool:
+def expert_tracking_enabled() -> bool:
     """Verify if MoE logging is enabled."""
     return _get_output_file() is not None
 
@@ -76,8 +81,8 @@ def set_model_id(model_id: str) -> None:
         _tracker.model_id = model_id
 
 
-print(
-    f"[ExpertTracker] module import: enabled={_tracking_enabled()} "
+logger.info(
+    f"[ExpertTracker] module import: enabled={expert_tracking_enabled()} "
     f"layer={_TARGET_LAYER_STR} file={_get_output_file()}"
 )
 # ============================================================================
@@ -165,7 +170,7 @@ class ExpertUsageTracker:
         """Open the output file for writing."""
         if self._file is None:
             self._file = open(self.output_file, "w")
-            print(
+            logger.info(
                 f"[ExpertTracker] Tracking layer {self.target_layer} "
                 f"-> {self.output_file}"
             )
@@ -184,6 +189,7 @@ class ExpertUsageTracker:
             "vllm_version": self.vllm_version,
             "torch_version": self.torch_version,
             "device": self.device,
+            "seed": int(_SEED_VALUE),
             "layers_logged": self.layers_logged,
             "top_k": top_k,
         }
@@ -234,7 +240,7 @@ class ExpertUsageTracker:
 
         # Write one record per token
         for i in range(num_tokens):
-            rec = {
+            routing_record = {
                 "type": "route",
                 "req_id": req_id,
                 "token_idx": int(self._token_count),
@@ -242,7 +248,7 @@ class ExpertUsageTracker:
                 "topk_ids": ids_cpu[i].tolist(),
                 "topk_weights": [round(float(w), 6) for w in weights_cpu[i].tolist()],
             }
-            self._file.write(json.dumps(rec) + "\n")
+            self._file.write(json.dumps(routing_record) + "\n")
 
             self._token_count += 1
             self._write_count += 1
@@ -258,7 +264,7 @@ class ExpertUsageTracker:
             self._file.flush()
             self._file.close()
             self._file = None
-            print(f"[ExpertTracker] Wrote {self._token_count} token records")
+            logger.info(f"[ExpertTracker] Wrote {self._token_count} token records")
 
 
 # ============================================================================
@@ -266,18 +272,18 @@ class ExpertUsageTracker:
 # ============================================================================
 
 
-def init_tracker() -> None:
+def init_expert_tracker() -> None:
     global _tracker
 
     if _tracker is not None:
         return
-    if not _tracking_enabled():
+    if not expert_tracking_enabled():
         return
 
     try:
         target_layer = int(_TARGET_LAYER_STR)
     except ValueError:
-        print(f"[ExpertTracker] Invalid VLLM_LOG_MOE_LAYER: {_TARGET_LAYER_STR}")
+        logger.info(f"[ExpertTracker] Invalid VLLM_LOG_MOE_LAYER: {_TARGET_LAYER_STR}")
         return
 
     output_file = _get_output_file()
@@ -286,10 +292,10 @@ def init_tracker() -> None:
 
     _tracker = ExpertUsageTracker(target_layer, output_file)
     atexit.register(_tracker.close)
-    print(f"[ExpertTracker] Initialized for layer {_tracker.target_layer}")
+    logger.info(f"[ExpertTracker] Initialized for layer {_tracker.target_layer}")
 
 
-def get_tracker() -> Optional[ExpertUsageTracker]:
+def get_expert_tracker() -> Optional[ExpertUsageTracker]:
     """Get the global tracker instance (may be None)."""
     return _tracker
 
@@ -312,13 +318,13 @@ def record_expert_selection(
     """
     global _tracker
 
-    if not _tracking_enabled():
+    if not expert_tracking_enabled():
         return
     if _SUPPRESS_TRACKING:
         return
 
     if _tracker is None:
-        init_tracker()
+        init_expert_tracker()
         if _tracker is None:
             return
 

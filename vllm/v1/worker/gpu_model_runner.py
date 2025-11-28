@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from vllm.model_executor.layers.fused_moe import expert_tracking
+from vllm.model_executor.layers.fused_moe.expert_tracking import (
+    suppress_expert_tracking, 
+    resume_expert_tracking,
+)
 
 import gc
 import itertools
@@ -3834,7 +3837,7 @@ class GPUModelRunner(
         )
 
         # Ensure MoE tracking is OFF for any dummy/profile/graph capture runs
-        expert_tracking.suppress_tracking()
+        suppress_expert_tracking()
         
         # If cudagraph_mode.decode_mode() == FULL and
         # cudagraph_mode.separate_routine(). This means that we are using
@@ -4067,7 +4070,7 @@ class GPUModelRunner(
         )
         
         # Ensure MoE tracking is ON after dummy/profile/graph capture runs
-        expert_tracking.resume_tracking()
+        resume_expert_tracking()
         
         return hidden_states, hidden_states[logit_indices_device]
 

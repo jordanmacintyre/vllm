@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 from vllm.model_executor.layers.fused_moe.expert_tracking import (
-    init_tracker,
+    init_expert_tracker,
     record_expert_selection,
-    _tracking_enabled,
+    expert_tracking_enabled,
 )
 
 from collections.abc import Callable
@@ -359,15 +359,15 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
         logical_replica_count: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
 
-        if _tracking_enabled():
-            init_tracker()
+        if expert_tracking_enabled():
+            init_expert_tracker()
 
         topk_weights, topk_ids, zero_expert_result = layer.select_experts(
             hidden_states=x,
             router_logits=router_logits,
         )
 
-        if _tracking_enabled():
+        if expert_tracking_enabled():
             layer_prefix = getattr(layer, "layer_name", "")
             try:
                 record_expert_selection(

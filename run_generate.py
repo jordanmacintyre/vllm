@@ -1,14 +1,14 @@
 from vllm import LLM, SamplingParams
-import os, json, time, random
-
-# Set random seed to match assignment overview
-random.seed(1234)
+import os, json, time
 
 MOE_LOG_ENABLED = True
+SEED = 1234
 
 # Set environment variables
+os.environ["VLLM_LOG_MOE_SEED"] = f"{SEED}"
 os.environ["VLLM_LOG_MOE_LAYER"] = "0"
 os.environ["VLLM_LOG_MOE"] = "moe_routes.jsonl" if MOE_LOG_ENABLED else ""
+
 
 
 if __name__ == "__main__":
@@ -26,6 +26,7 @@ if __name__ == "__main__":
         max_num_seqs=1,
         tensor_parallel_size=2,
         gpu_memory_utilization=0.7,
+        seed=SEED,
     )
 
     # Start timer
