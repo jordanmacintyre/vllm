@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+from vllm.model_executor.layers.fused_moe.expert_tracking import (
+    init_tracker,
+    record_expert_selection,
+    EXPERT_TRACKING_ENABLED,
+)
+
 from collections.abc import Callable
 
 import torch
@@ -352,11 +358,27 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
         logical_to_physical_map: torch.Tensor | None = None,
         logical_replica_count: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+
+        if EXPERT_TRACKING_ENABLED:
+            init_tracker()
+
         topk_weights, topk_ids, zero_expert_result = layer.select_experts(
             hidden_states=x,
             router_logits=router_logits,
         )
 
+        if EXPERT_TRACKING_ENABLED:
+            layer_prefix = getattr(layer, "layer_name", "")
+            try:
+                record_expert_selection(
+                    topk_ids=topk_ids,
+                    topk_weights=topk_weights,
+                    layer_prefix=layer_prefix,
+                )
+            except Exception as e:
+                # Safety net: do not let expert logging take down the engine
+                print(f"[ExpertTracker] disabling logging due to error: {e}")
+        
         if self.rocm_aiter_moe_enabled:
             result = self.rocm_aiter_fused_experts(
                 hidden_states=x,

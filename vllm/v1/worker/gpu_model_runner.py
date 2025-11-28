@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+from vllm.model_executor.layers.fused_moe import expert_tracking
+
 import gc
 import itertools
 import time
@@ -3831,6 +3833,9 @@ class GPUModelRunner(
             or cudagraph_runtime_mode.valid_runtime_modes()
         )
 
+        # Ensure MoE tracking is OFF for any dummy/profile/graph capture runs
+        expert_tracking.suppress_tracking()
+        
         # If cudagraph_mode.decode_mode() == FULL and
         # cudagraph_mode.separate_routine(). This means that we are using
         # different graphs and/or modes for mixed prefill-decode batches vs.
@@ -4060,6 +4065,10 @@ class GPUModelRunner(
         logit_indices_device = torch.from_numpy(logit_indices).to(
             self.device, non_blocking=True
         )
+        
+        # Ensure MoE tracking is ON after dummy/profile/graph capture runs
+        expert_tracking.resume_tracking()
+        
         return hidden_states, hidden_states[logit_indices_device]
 
     @torch.inference_mode()
